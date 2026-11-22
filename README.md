@@ -85,7 +85,7 @@ El ejercicio también hizo visible una limitación del sistema: mide cambios de 
 
 ### Publicación
 
-La dirección definitiva de GitHub Pages y el enlace al video demostrativo de 30–60 segundos se incorporarán después de la publicación y grabación.
+https://charlesdiner0.github.io/oir-la-luz/?utm_source=chatgpt.com
 
 ### Créditos y procedencia
 
