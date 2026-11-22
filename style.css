@@ -720,3 +720,12 @@ select option { background: var(--bg-dark); color: var(--text-main); }
     max-height: calc(100vh - 24px);
   }
 }
+
+/* PULSO 90 — Permitir paneles desplegables */
+
+@media (min-width: 901px) {
+  .dock {
+    overflow: visible !important;
+    max-height: none;
+  }
+}
