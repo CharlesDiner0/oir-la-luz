@@ -54,13 +54,7 @@ En los otros modos heredados de la herramienta base se mantienen controles y sí
 
 **Decisiones gráficas:** fondo azul casi negro (`#10151C`), superficies oscuras (`#1A232D`), blanco cálido (`#F2F1EB`) y acento coral (`#E56A5D`). El coral señala actividad y destaca el nombre **PULSO 90**. Las letras monoespaciadas y las líneas finas remiten a instrumentos de observación. Un monitor muestra el **porcentaje real de cambio**, su historial temporal y las visualizaciones acústicas; el video o la cámara conservan el protagonismo.
 
-**Capturas de la plataforma**  
-Para la versión final del README deben añadirse **2 o 3 capturas** tomadas en la versión publicada, idealmente:
-1. Vista principal con un video **propio o autorizado** y el monitor de actividad.
-2. Panel **02 Banco**, con los ocho sonidos cargados.
-3. Panel **03 Detección** o **06 Mapping**, mostrando la regla que relaciona la imagen con la salida de audio.
 
-Se recomienda guardarlas en `capturas/` y reemplazar esta indicación por imágenes Markdown (`![Descripción](capturas/nombre.png)`). No se incorporan capturas de la webcam personal ni de una transmisión deportiva ajena sin autorización.
 
 ## 4. Reflexión y posibles mejoras
 
@@ -85,7 +79,9 @@ El ejercicio también hizo visible una limitación del sistema: mide cambios de 
 
 ### Publicación
 
-https://charlesdiner0.github.io/oir-la-luz/?utm_source=chatgpt.com
+Plataforma interactiva: https://charlesdiner0.github.io/oir-la-luz/
+
+Repositorio: https://github.com/CharlesDiner0/oir-la-luz
 
 ### Créditos y procedencia
 
