@@ -168,14 +168,266 @@
   function updSoundBtn() {
     const on = soundOn();
     $("soundBtn").setAttribute("aria-pressed", String(on));
-    $("soundBtn").textContent = on ? "■ Apagar sonido" : "▶ Activar sonido";
-    $("noteDl").disabled = !on || lastMidi == null;
+    $("soundBtn").textContent = on ? "■ Silenciar audio" : "▶ Activar sonido";
+    $("noteDl").disabled = !on || (lastMidi == null && lastSampleId == null);
     $("recBtn").disabled = !on && !recording;
+    const badge = $("signalStatusBadge");
+    const text = $("signalStatusText");
+    if (badge && text) {
+      badge.classList.toggle("active", on);
+      text.textContent = on ? "SEÑAL ACTIVA" : "SEÑAL EN ESPERA";
+    }
   }
   $("soundBtn").addEventListener("click", async () => {
+    const isFirstTime = !ac;
     if (!ac) initAudio();
-    try { if (ac.state === "running") await ac.suspend(); else await ac.resume(); } catch (_) {}
+    try {
+      if (isFirstTime) {
+        if (ac.state === "suspended") await ac.resume();
+        if (!bankLoaded && !bankLoading) loadBank(ac);
+      } else if (ac.state === "running") {
+        await ac.suspend();
+      } else {
+        await ac.resume();
+        if (!bankLoaded && !bankLoading) loadBank(ac);
+      }
+    } catch (_) {}
     updSoundBtn();
+  });
+
+  // ================= banco sonoro PULSO 90 =================
+  const SOUND_FILES = [
+    { id: "01_latido_base", name: "Latido base", file: "sonidos/01_latido_base.wav" },
+    { id: "02_latido_rapido", name: "Latido rápido", file: "sonidos/02_latido_rapido.wav" },
+    { id: "03_respiracion", name: "Respiración", file: "sonidos/03_respiracion.wav" },
+    { id: "04_friccion", name: "Fricción", file: "sonidos/04_friccion.wav" },
+    { id: "05_murmullo", name: "Murmullo", file: "sonidos/05_murmullo.wav" },
+    { id: "06_desplazamiento", name: "Desplazamiento", file: "sonidos/06_desplazamiento.wav" },
+    { id: "07_tension", name: "Tensión", file: "sonidos/07_tension.wav" },
+    { id: "08_estallido", name: "Estallido", file: "sonidos/08_estallido.wav" },
+  ];
+
+  const SOUND_NAMES = {
+    "01_latido_base": "Latido base",
+    "02_latido_rapido": "Latido rápido",
+    "03_respiracion": "Respiración",
+    "04_friccion": "Fricción",
+    "05_murmullo": "Murmullo",
+    "06_desplazamiento": "Desplazamiento",
+    "07_tension": "Tensión",
+    "08_estallido": "Estallido",
+  };
+
+  const SOUND_MIDI = {
+    "01_latido_base": 48,
+    "02_latido_rapido": 55,
+    "03_respiracion": 52,
+    "04_friccion": 50,
+    "05_murmullo": 57,
+    "06_desplazamiento": 60,
+    "07_tension": 64,
+    "08_estallido": 72,
+  };
+
+  const soundBank = {};
+  const bankErrors = {};
+  let bankLoaded = false, bankLoading = false;
+  let lastSampleId = null;
+
+  const SAMPLE_COOLDOWNS = {
+    "01_latido_base": 1200,
+    "02_latido_rapido": 1000,
+    "03_respiracion": 3500,
+    "04_friccion": 1800,
+    "05_murmullo": 4000,
+    "06_desplazamiento": 2000,
+    "07_tension": 4500,
+    "08_estallido": 5000,
+  };
+
+  const SAMPLE_BASE_VOL = {
+    "01_latido_base": 0.70,
+    "02_latido_rapido": 0.75,
+    "03_respiracion": 0.65,
+    "04_friccion": 0.55,
+    "05_murmullo": 0.60,
+    "06_desplazamiento": 0.68,
+    "07_tension": 0.72,
+    "08_estallido": 0.90,
+  };
+
+  const lastSampleTriggerT = {
+    "01_latido_base": -1e9,
+    "02_latido_rapido": -1e9,
+    "03_respiracion": -1e9,
+    "04_friccion": -1e9,
+    "05_murmullo": -1e9,
+    "06_desplazamiento": -1e9,
+    "07_tension": -1e9,
+    "08_estallido": -1e9,
+  };
+
+  let activeAutoVoices = [];
+  // PULSO 90: actividad reciente para reconocer clímax sostenidos, no un único corte.
+  let peakBaseline = 0;
+  let peakConfirmFrames = 0;
+
+
+  function cleanAutoVoices() {
+    if (!ac) {
+      activeAutoVoices = [];
+      return 0;
+    }
+    const cur = ac.currentTime;
+    activeAutoVoices = activeAutoVoices.filter((v) => cur < v.endTime);
+    return activeAutoVoices.length;
+  }
+
+  function isAutoSamplePlaying(soundId) {
+    if (!ac) return false;
+    const cur = ac.currentTime;
+    return activeAutoVoices.some((v) => v.id === soundId && cur < v.endTime);
+  }
+
+  async function loadSample(ctx, item) {
+    try {
+      const res = await fetch(item.file);
+      if (!res.ok) throw new Error(`HTTP ${res.status} (${res.statusText || "no encontrado"})`);
+      const arrayBuf = await res.arrayBuffer();
+      const audioBuf = await ctx.decodeAudioData(arrayBuf);
+      soundBank[item.id] = audioBuf;
+      delete bankErrors[item.id];
+      return { id: item.id, ok: true };
+    } catch (err) {
+      const msg = err && err.message ? err.message : String(err);
+      bankErrors[item.id] = msg;
+      console.error(`Error al cargar ${item.file}:`, msg);
+      return { id: item.id, ok: false, error: msg };
+    }
+  }
+
+  async function loadBank(ctx) {
+    if (bankLoaded || bankLoading) return;
+    bankLoading = true;
+    const stEl = $("stBank"), bStEl = $("bankStatus"), bErrEl = $("bankError");
+    if (stEl) stEl.textContent = "cargando";
+    if (bStEl) bStEl.textContent = "Cargando 8 muestras...";
+    const results = await Promise.all(SOUND_FILES.map((item) => loadSample(ctx, item)));
+    bankLoading = false;
+    const failed = results.filter((r) => !r.ok);
+    if (failed.length === 0) {
+      bankLoaded = true;
+      if (stEl) stEl.textContent = "8 listos";
+      if (bStEl) bStEl.textContent = "8 muestras cargadas correctamente.";
+      if (bErrEl) { bErrEl.textContent = ""; bErrEl.hidden = true; }
+    } else {
+      bankLoaded = false;
+      if (stEl) stEl.textContent = `${8 - failed.length}/8`;
+      const errMsg = `Error al cargar ${failed.length} muestra(s): ` + failed.map((f) => `${f.id} (${f.error})`).join(", ");
+      if (bStEl) bStEl.textContent = "Carga incompleta. Revisa la consola o errores.";
+      if (bErrEl) {
+        bErrEl.textContent = errMsg;
+        bErrEl.hidden = false;
+      }
+      toast("Error al cargar banco sonoro");
+    }
+  }
+
+  // Al llegar un clímax, abre espacio mediante un fundido de 90 ms.
+  // Se utiliza solo para el estallido; el resto mantiene la mezcla aprobada.
+  function freeVoiceForClimax() {
+    cleanAutoVoices();
+    if (activeAutoVoices.length < 3 || !ac) return;
+    const candidate = activeAutoVoices.find((v) => v.id !== "08_estallido");
+    if (!candidate) return;
+    const t = ac.currentTime;
+    const g = candidate.gainNode.gain;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(Math.max(0.001, g.value), t);
+    g.linearRampToValueAtTime(0, t + 0.09);
+    try { candidate.srcNode.stop(t + 0.10); } catch (_) { /* ya terminó */ }
+    activeAutoVoices = activeAutoVoices.filter((v) => v !== candidate);
+  }
+
+  function playSample(ctx, inputs, id, vel = 1, pan = 0, rate = 1, isAuto = false) {
+    const buf = soundBank[id];
+    if (!ctx || !buf) return 0;
+
+    if (isAuto) {
+      cleanAutoVoices();
+      if (activeAutoVoices.length >= 3) {
+        return 0; // Límite de polifonía estricto (máximo 3 automáticos)
+      }
+    }
+
+    const srcNode = ctx.createBufferSource();
+    srcNode.buffer = buf;
+    srcNode.playbackRate.value = rate;
+
+    const g = ctx.createGain();
+    const peak = Math.max(0.01, Math.min(1.2, vel));
+    g.gain.setValueAtTime(peak, ctx.currentTime);
+
+    srcNode.connect(g);
+    let node = g;
+    if (ctx.createStereoPanner) {
+      const p = ctx.createStereoPanner();
+      p.pan.value = Math.max(-1, Math.min(1, pan));
+      node.connect(p);
+      node = p;
+    }
+    inputs.forEach((i) => node.connect(i));
+    srcNode.start();
+
+    const duration = buf.duration / rate;
+
+    if (isAuto) {
+      const voiceRec = {
+        id,
+        srcNode,
+        gainNode: g,
+        endTime: ctx.currentTime + duration
+      };
+      srcNode.onended = () => {
+        const idx = activeAutoVoices.indexOf(voiceRec);
+        if (idx !== -1) activeAutoVoices.splice(idx, 1);
+      };
+      activeAutoVoices.push(voiceRec);
+    }
+
+    return duration;
+  }
+
+  // botones de prueba individual del banco sonoro (independientes del límite de polifonía automático)
+  document.querySelectorAll(".bank-test-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.sound;
+      if (!ac) initAudio();
+      if (ac.state === "suspended") {
+        try { await ac.resume(); } catch (_) {}
+      }
+      updSoundBtn();
+      if (!bankLoaded && !bankLoading) {
+        if ($("bankStatus")) $("bankStatus").textContent = "Cargando banco de sonidos...";
+        await loadBank(ac);
+      }
+      if (soundBank[id]) {
+        const baseVol = SAMPLE_BASE_VOL[id] || 0.75;
+        playSample(ac, [main.input], id, baseVol, 0, 1, false);
+        btn.setAttribute("aria-pressed", "true");
+        setTimeout(() => btn.setAttribute("aria-pressed", "false"), 450);
+        if ($("bankStatus")) $("bankStatus").textContent = `Reproduciendo: ${SOUND_NAMES[id] || id}`;
+        toast(`▶ ${SOUND_NAMES[id] || id}`);
+      } else {
+        const err = bankErrors[id] || "No cargado";
+        if ($("bankStatus")) $("bankStatus").textContent = `Error: ${id} no está disponible`;
+        if ($("bankError")) {
+          $("bankError").textContent = `Error en ${id}: ${err}`;
+          $("bankError").hidden = false;
+        }
+        toast(`Error: ${id}`);
+      }
+    });
   });
 
   // ================= descargas =================
@@ -234,15 +486,22 @@
   $("recDl").addEventListener("click", () => { if (recBlob) deliver(recBlob, "oir-la-luz-grabacion"); });
   let lastMidi = null;
   $("noteDl").addEventListener("click", () => {
-    if (!soundOn() || lastMidi == null) return;
+    if (!soundOn() || (lastMidi == null && lastSampleId == null)) return;
     const mime = pickMime(); if (mime === null) { toast("Este navegador no permite grabar audio"); return; }
     const ch = buildChain(ac), dest = ac.createMediaStreamDestination(); ch.out.connect(dest);
     const rec = new MediaRecorder(dest.stream, mime ? { mimeType: mime } : undefined), chunks = [];
     rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-    const m = lastMidi;
-    rec.onstop = () => deliver(new Blob(chunks, { type: rec.mimeType || "audio/webm" }), "nota-" + noteName(m).replace("#", "s") + "-" + Math.round(mtof(m)) + "Hz");
-    rec.start(); $("noteDl").disabled = true; toast("Grabando " + noteName(m));
-    const dur = voice(ac, [ch.input, main.input], m, 0.9, 0);
+    let dur = 1.0;
+    if (S.mode === "zonas" && lastSampleId && soundBank[lastSampleId]) {
+      rec.onstop = () => deliver(new Blob(chunks, { type: rec.mimeType || "audio/webm" }), "muestra-" + lastSampleId);
+      rec.start(); $("noteDl").disabled = true; toast("Grabando " + (SOUND_NAMES[lastSampleId] || lastSampleId));
+      dur = playSample(ac, [ch.input, main.input], lastSampleId, 0.9, 0) || 1.5;
+    } else {
+      const m = lastMidi || 48;
+      rec.onstop = () => deliver(new Blob(chunks, { type: rec.mimeType || "audio/webm" }), "nota-" + noteName(m).replace("#", "s") + "-" + Math.round(mtof(m)) + "Hz");
+      rec.start(); $("noteDl").disabled = true; toast("Grabando " + noteName(m));
+      dur = voice(ac, [ch.input, main.input], m, 0.9, 0);
+    }
     setTimeout(() => { rec.stop(); updSoundBtn(); }, (dur + 1.4) * 1000);
   });
 
@@ -253,10 +512,76 @@
   let prev = null; const mask = new Uint8Array(PW * PH);
   let energy = [], flash = [], last = [];
   const parts = [], roll = [];
+  let lastEstallidoT = -1e9;
+  let wasGlobalPeak = false;
+  let lastGlobalZoneSoundT = -1e9;
+
+  // --- Telemetría de actividad PULSO 90 ---
+  const ACTIVITY_HISTORY_LEN = 180;
+  const activityHistory = new Float32Array(ACTIVITY_HISTORY_LEN);
+  let activityHead = 0;
+
+  function updateTelemetryUI(now, globalPct) {
+    const valEl = $("globalActivityVal");
+    if (valEl) valEl.textContent = (globalPct * 100).toFixed(1) + " %";
+    const fillEl = $("intensityFill");
+    if (fillEl) fillEl.style.width = Math.min(100, Math.round((globalPct / 0.35) * 100)) + "%";
+
+    const pillEst = $("pillEstallido");
+    const pillTen = $("pillTension");
+    const pillCon = $("pillContencion");
+
+    const isEst = (globalPct >= 0.28) || isAutoSamplePlaying("08_estallido") || (now - (lastSampleTriggerT["08_estallido"] || -1e9) < 1500);
+    const isTen = !isEst && ((globalPct >= 0.16) || isAutoSamplePlaying("07_tension") || (now - (lastSampleTriggerT["07_tension"] || -1e9) < 1800));
+
+    if (pillEst) pillEst.classList.toggle("active", isEst);
+    if (pillTen) pillTen.classList.toggle("active", isTen);
+    if (pillCon) pillCon.classList.toggle("active", !isEst && !isTen);
+  }
+
   function ensureGrid() { const n = S.cols * S.rows; if (energy.length !== n) { energy = new Array(n).fill(0); flash = new Array(n).fill(0); last = new Array(n).fill(0); } }
   function cellMidi(c, r) { const sc = SCALES[S.scale]; return S.root + sc[c % sc.length] + 12 * Math.floor(c / sc.length) + 12 * (S.rows - 1 - r); }
   function activeSource() { return S.src === "demo" ? demo : (S.src === "cam" || S.src === "file") && video.readyState >= 2 ? video : null; }
   function srcAspect(src) { if (!src) return 16 / 9; if (src === demo) return 16 / 9; return (video.videoWidth || 16) / (video.videoHeight || 9); }
+
+  function fireSample(now, soundId, vel, pan, where, pct, isAuto = false) {
+    if (soundOn()) {
+      const played = playSample(ac, [main.input], soundId, vel, pan, 1, isAuto);
+      if (isAuto && !played) {
+        return false;
+      }
+    }
+    // Indicador visual en el botón del banco sonoro
+    const btn = document.querySelector(`.bank-test-btn[data-sound="${soundId}"]`);
+    if (btn) {
+      btn.classList.add("firing");
+      setTimeout(() => btn.classList.remove("firing"), 450);
+    }
+    const m = SOUND_MIDI[soundId] || 48;
+    const col = soundId === "08_estallido" ? "#E56A5D" : (soundId === "07_tension" ? "#FF8E72" : "#3E78B2");
+    roll.push({ t: now, m, c: col });
+    lastMidi = m;
+    lastSampleId = soundId;
+    lastFreq = mtof(m);
+    lastNoteT = performance.now();
+    updScopeCap();
+    $("lastNote").textContent = SOUND_NAMES[soundId] || soundId;
+    const STAGE_NAMES = {
+      "01_latido_base": "anticipación",
+      "02_latido_rapido": "aceleración",
+      "03_respiracion": "anticipación",
+      "04_friccion": "disputa",
+      "05_murmullo": "tensión latente",
+      "06_desplazamiento": "aceleración",
+      "07_tension": "tensión alta",
+      "08_estallido": "estallido"
+    };
+    $("lastHz").textContent = STAGE_NAMES[soundId] || "muestra";
+    $("lastZone").textContent = where;
+    $("lastPct").textContent = Math.round(pct * 100) + " %";
+    $("noteDl").disabled = !soundOn();
+    return true;
+  }
 
   function analyse(now) {
     const src = activeSource(); if (!src) { prev = null; curGray = null; return; }
@@ -267,8 +592,8 @@
     for (let i = 0, j = 0; i < gray.length; i++, j += 4) gray[i] = (d[j] * 0.3 + d[j + 1] * 0.59 + d[j + 2] * 0.11) | 0;
     ensureGrid();
     const counts = new Array(S.cols * S.rows).fill(0);
+    let changed = 0;
     if (prev) {
-      let changed = 0;
       for (let i = 0; i < gray.length; i++) { const df = Math.abs(gray[i] - prev[i]); mask[i] = df > S.thr ? Math.min(255, df) : 0; if (mask[i]) changed++; }
       const p = S.parts ? Math.min(0.35, 50 / Math.max(1, changed)) : 0;
       for (let y = 0; y < PH; y++) {
@@ -285,8 +610,155 @@
     }
     const hadPrev = !!prev;
     prev = gray; curGray = gray;
+    const globalPct = hadPrev ? (changed / (PW * PH)) : 0;
+    activityHistory[activityHead] = globalPct;
+    activityHead = (activityHead + 1) % ACTIVITY_HISTORY_LEN;
+    updateTelemetryUI(now, globalPct);
+
     if (S.mode === "linea" || S.mode === "lineas") { if (hadPrev) lineDetect(now); return; }
     if (S.mode === "escaner") return;
+
+    if (S.mode === "zonas") {
+
+      // 1. Clímax: actividad intensa y sostenida o salto relevante sobre la media móvil.
+      // La detección no identifica goles ni distingue todos los cortes de cámara.
+      const prevBaseline = peakBaseline;
+      const ESTALLIDO_THRESH = Math.max(0.17, S.sens * 3.0);
+      const ESTALLIDO_RESET = ESTALLIDO_THRESH * 0.60;
+      const adaptivePeak = globalPct >= 0.13 && globalPct >= prevBaseline + 0.065;
+      const peakNow = globalPct >= ESTALLIDO_THRESH || adaptivePeak;
+      if (peakNow && hadPrev) peakConfirmFrames++;
+      else peakConfirmFrames = 0;
+      // Filtrado lento, ~2-3 segundos a 15 fps, para no seguir instantáneamente al pico.
+      peakBaseline = prevBaseline * 0.97 + globalPct * 0.03;
+
+      if (peakConfirmFrames >= 3 && !wasGlobalPeak) {
+        const canEstallido = (now - lastSampleTriggerT["08_estallido"] >= SAMPLE_COOLDOWNS["08_estallido"]) &&
+          !isAutoSamplePlaying("08_estallido");
+        if (canEstallido && soundOn() && soundBank["08_estallido"]) {
+          freeVoiceForClimax();
+          // El impacto tiene prioridad perceptual; el compresor maestro previene picos.
+          const estVel = 1.12;
+          const fired = fireSample(now, "08_estallido", estVel, 0, "CLÍMAX VISUAL", globalPct, true);
+          if (fired) {
+            wasGlobalPeak = true;
+            lastSampleTriggerT["08_estallido"] = now;
+            lastGlobalZoneSoundT = now;
+            return;
+          }
+        }
+      }
+      if (globalPct < ESTALLIDO_RESET) {
+        wasGlobalPeak = false;
+      }
+
+      // 2. Actividad por zona: seleccionar ÚNICAMENTE la zona de mayor energía en este fotograma
+      const cellPx = (PW / S.cols) * (PH / S.rows);
+      let top = null;
+      for (let r = 0; r < S.rows; r++) {
+        for (let c = 0; c < S.cols; c++) {
+          const k = r * S.cols + c;
+          energy[k] = energy[k] * 0.5 + (counts[k] / cellPx) * 0.5;
+          if (energy[k] > S.sens && (now - last[k] > S.cool)) {
+            if (!top || energy[k] > top.e) {
+              top = { r, c, k, e: energy[k] };
+            }
+          }
+        }
+      }
+
+      // Intervalo global mínimo entre disparos automáticos (650 ms)
+      const MIN_GLOBAL_INTERVAL = 650;
+      const CLIMAX_BREATH_MS = 1100; // silencio breve después del impacto
+      if (!top || (now - lastGlobalZoneSoundT < MIN_GLOBAL_INTERVAL) ||
+          (now - lastSampleTriggerT["08_estallido"] < CLIMAX_BREATH_MS)) {
+        return;
+      }
+
+      // Límite de polifonía estricto: máximo 3 muestras automáticas simultáneas
+      cleanAutoVoices();
+      if (activeAutoVoices.length >= 3) {
+        return;
+      }
+
+      // 3. Prioridad sonora según nivel de actividad
+      const lowThresh = Math.max(0.08, S.sens * 2.0);
+      const highThresh = Math.max(0.22, S.sens * 4.5);
+      let soundId = null;
+
+      if (top.e >= highThresh) {
+        // --- Actividad alta: priorizar tensión, pero no repetirla mientras su cola anterior siga sonando ---
+        const canTension = (now - lastSampleTriggerT["07_tension"] >= SAMPLE_COOLDOWNS["07_tension"]) &&
+          !isAutoSamplePlaying("07_tension");
+        if (canTension) {
+          soundId = "07_tension";
+        } else {
+          // Si tensión ya está sonando, no la repetimos sobre sí misma.
+          // Solo si latido rápido está libre y tensión ya avanzó, puede acompañar un latido rápido
+          const canLatRap = (now - lastSampleTriggerT["02_latido_rapido"] >= SAMPLE_COOLDOWNS["02_latido_rapido"]);
+          if (canLatRap && (now - lastSampleTriggerT["07_tension"] >= 1800)) {
+            soundId = "02_latido_rapido";
+          }
+        }
+      } else if (top.e >= lowThresh) {
+        // --- Actividad media: priorizar latido rápido o desplazamiento, con murmullo ocasional ---
+        const canLatRap = (now - lastSampleTriggerT["02_latido_rapido"] >= SAMPLE_COOLDOWNS["02_latido_rapido"]);
+        const canDespl = (now - lastSampleTriggerT["06_desplazamiento"] >= SAMPLE_COOLDOWNS["06_desplazamiento"]);
+        const canMurm = (now - lastSampleTriggerT["05_murmullo"] >= SAMPLE_COOLDOWNS["05_murmullo"]) &&
+          !isAutoSamplePlaying("05_murmullo");
+
+        if (canMurm && ((top.c + top.r) % 3 === 0)) {
+          soundId = "05_murmullo";
+        } else if (canLatRap && (top.r % 2 === 0 || !canDespl)) {
+          soundId = "02_latido_rapido";
+        } else if (canDespl) {
+          soundId = "06_desplazamiento";
+        } else if (canLatRap) {
+          soundId = "02_latido_rapido";
+        } else if (canMurm) {
+          soundId = "05_murmullo";
+        }
+      } else {
+        // --- Actividad baja: priorizar latido base o respiración; evitar activar muchas texturas ---
+        const canLatido = (now - lastSampleTriggerT["01_latido_base"] >= SAMPLE_COOLDOWNS["01_latido_base"]);
+        const canResp = (now - lastSampleTriggerT["03_respiracion"] >= SAMPLE_COOLDOWNS["03_respiracion"]) &&
+          !isAutoSamplePlaying("03_respiracion");
+        const canFric = (now - lastSampleTriggerT["04_friccion"] >= SAMPLE_COOLDOWNS["04_friccion"]);
+
+        if (top.e > lowThresh * 0.75 && canFric && ((top.c + top.r) % 4 === 0)) {
+          soundId = "04_friccion";
+        } else if (canResp && (top.r === 0 || !canLatido)) {
+          soundId = "03_respiracion";
+        } else if (canLatido) {
+          soundId = "01_latido_base";
+        } else if (canResp) {
+          soundId = "03_respiracion";
+        } else if (canFric) {
+          soundId = "04_friccion";
+        }
+      }
+
+      // Si ninguna muestra está disponible (silencio intencional)
+      if (!soundId) {
+        return;
+      }
+
+      // 4. Volumen individual moderado según la muestra + modulación sutil por movimiento
+      const baseVol = SAMPLE_BASE_VOL[soundId] || 0.70;
+      const dynamicFactor = S.mapVel ? (0.85 + Math.min(0.25, top.e * 0.6)) : 1.0;
+      const vel = baseVol * dynamicFactor;
+      const pan = S.mapPan ? ((top.c + 0.5) / S.cols) * 2 - 1 : 0;
+
+      const fired = fireSample(now, soundId, vel, pan * 0.85, (top.c + 1) + "," + (top.r + 1), top.e, true);
+      if (fired) {
+        lastGlobalZoneSoundT = now;
+        lastSampleTriggerT[soundId] = now;
+        last[top.k] = now;
+        flash[top.k] = 1;
+      }
+      return;
+    }
+
     const cellPx = (PW / S.cols) * (PH / S.rows);
     for (let r = 0; r < S.rows; r++) for (let c = 0; c < S.cols; c++) {
       const k = r * S.cols + c;
@@ -375,15 +847,15 @@
   }
   function drawView(dt) {
     const dpr = fit(view), W = view.width, H = view.height;
-    vctx.fillStyle = "#05061A"; vctx.fillRect(0, 0, W, H);
+    vctx.fillStyle = "#10151C"; vctx.fillRect(0, 0, W, H);
     const src = activeSource(), ar = srcAspect(src);
     let bw = W, bh = W / ar; if (bh > H) { bh = H; bw = H * ar; }
     const bx = (W - bw) / 2, by = (H - bh) / 2;
     if (S.view === "mask") {
       for (let i = 0; i < PW * PH; i++) {
         const j = i * 4, m = mask[i];
-        if (m) { const k = Math.min(1, (m - S.thr) / 110); mimg.data[j] = 59 + (226 - 59) * k; mimg.data[j + 1] = 59 + (255 - 59) * k; mimg.data[j + 2] = 255 - 196 * k; }
-        else { mimg.data[j] = 8; mimg.data[j + 1] = 9; mimg.data[j + 2] = 32; }
+        if (m) { const k = Math.min(1, (m - S.thr) / 110); mimg.data[j] = 229; mimg.data[j + 1] = 106 + (149 * (1 - k)) | 0; mimg.data[j + 2] = 93; }
+        else { mimg.data[j] = 16; mimg.data[j + 1] = 21; mimg.data[j + 2] = 28; }
         mimg.data[j + 3] = 255;
       }
       mctx.putImageData(mimg, 0, 0);
@@ -392,42 +864,42 @@
       vctx.save();
       if (S.src === "cam" && S.mirror) { vctx.translate(bx * 2 + bw, 0); vctx.scale(-1, 1); }
       vctx.drawImage(src, bx, by, bw, bh); vctx.restore();
-      if (S.veil > 0) { vctx.fillStyle = "rgba(5,6,26," + S.veil.toFixed(2) + ")"; vctx.fillRect(bx, by, bw, bh); }
+      if (S.veil > 0) { vctx.fillStyle = "rgba(16,21,28," + S.veil.toFixed(2) + ")"; vctx.fillRect(bx, by, bw, bh); }
     } else {
-      vctx.fillStyle = "rgba(238,240,255,.6)"; vctx.font = Math.round(11 * dpr) + "px 'IBM Plex Mono', monospace"; vctx.textAlign = "center";
+      vctx.fillStyle = "rgba(155,170,185,.7)"; vctx.font = Math.round(11 * dpr) + "px 'IBM Plex Mono', monospace"; vctx.textAlign = "center";
       vctx.fillText(S.src === "camoff" ? "CÁMARA APAGADA" : "ESPERANDO IMAGEN", W / 2, H / 2); vctx.textAlign = "start";
     }
     if (S.parts && S.view !== "mask") drawParts(bx, by, bw, bh, dpr, dt);
     if (S.mode === "linea" || S.mode === "lineas") { drawLines(bx, by, bw, bh, dpr, dt); return; }
     if (S.mode === "escaner") { drawScanner(bx, by, bw, bh, dpr, dt); return; }
-    // tono azul sobre las zonas que cambian (siempre visible)
+    // tono azul / coral sobre las zonas que cambian (siempre visible)
     const cw = bw / S.cols, rh = bh / S.rows; ensureGrid();
     for (let r = 0; r < S.rows; r++) for (let c = 0; c < S.cols; c++) {
       const k = r * S.cols + c, f = flash[k];
       if (f > 0.02) {
-        vctx.fillStyle = "rgba(59,59,255," + (S.tint * f).toFixed(3) + ")"; vctx.fillRect(bx + c * cw, by + r * rh, cw, rh);
+        vctx.fillStyle = "rgba(62,120,178," + (S.tint * f * 0.95).toFixed(3) + ")"; vctx.fillRect(bx + c * cw, by + r * rh, cw, rh);
         flash[k] *= Math.pow(0.12, dt);
       }
     }
     // líneas: grilla de 1 px, marco de la zona activa y nivel de cambio
     if (S.lines) {
-      vctx.strokeStyle = "rgba(238,240,255,.22)"; vctx.lineWidth = 1;
+      vctx.strokeStyle = "rgba(242,241,235,.15)"; vctx.lineWidth = 1;
       vctx.beginPath();
       for (let c = 1; c < S.cols; c++) { const x = Math.round(bx + c * cw) + 0.5; vctx.moveTo(x, by); vctx.lineTo(x, by + bh); }
       for (let r = 1; r < S.rows; r++) { const y = Math.round(by + r * rh) + 0.5; vctx.moveTo(bx, y); vctx.lineTo(bx + bw, y); }
       vctx.stroke();
       for (let r = 0; r < S.rows; r++) for (let c = 0; c < S.cols; c++) {
         const k = r * S.cols + c, f = flash[k];
-        if (f > 0.15) { vctx.strokeStyle = "rgba(226,255,59," + (0.8 * f).toFixed(3) + ")"; vctx.strokeRect(Math.round(bx + c * cw) + 0.5, Math.round(by + r * rh) + 0.5, Math.round(cw) - 1, Math.round(rh) - 1); }
+        if (f > 0.15) { vctx.strokeStyle = "rgba(229,106,93," + (0.9 * f).toFixed(3) + ")"; vctx.strokeRect(Math.round(bx + c * cw) + 0.5, Math.round(by + r * rh) + 0.5, Math.round(cw) - 1, Math.round(rh) - 1); }
         const e = Math.min(1, energy[k] / Math.max(0.01, S.sens));
-        vctx.fillStyle = "rgba(238,240,255,.5)"; vctx.fillRect(bx + c * cw + 8 * dpr, by + (r + 1) * rh - 6 * dpr, (cw - 16 * dpr) * e, dpr);
+        vctx.fillStyle = "rgba(229,106,93,.65)"; vctx.fillRect(bx + c * cw + 8 * dpr, by + (r + 1) * rh - 6 * dpr, (cw - 16 * dpr) * e, dpr);
       }
     }
     if (S.notes) {
       vctx.font = Math.round(10 * dpr) + "px 'IBM Plex Mono', monospace";
       for (let r = 0; r < S.rows; r++) for (let c = 0; c < S.cols; c++) {
         const k = r * S.cols + c, f = flash[k];
-        vctx.fillStyle = f > 0.3 ? "#E2FF3B" : "rgba(238,240,255,.62)";
+        vctx.fillStyle = f > 0.3 ? "#E56A5D" : "rgba(155,170,185,.6)";
         vctx.fillText(noteName(cellMidi(c, r)).toUpperCase(), bx + c * cw + 8 * dpr, by + (r + 1) * rh - 12 * dpr);
       }
     }
@@ -439,7 +911,7 @@
       const p = parts[i]; p.y += p.vy * dt; p.life -= p.decay * dt;
       if (p.life <= 0) { parts.splice(i, 1); continue; }
       const a = (p.life * 0.55).toFixed(3);
-      vctx.fillStyle = p.k > 0.55 ? "rgba(226,255,59," + a + ")" : "rgba(150,150,255," + a + ")";
+      vctx.fillStyle = p.k > 0.55 ? "rgba(229,106,93," + a + ")" : "rgba(62,120,178," + a + ")";
       const s = (1 + p.k * 1.6) * dpr;
       vctx.fillRect(bx + p.x * bw - s / 2, by + p.y * bh - s / 2, s, s);
     }
@@ -448,10 +920,10 @@
     const xs = lineXs(), segH = bh / S.segs;
     vctx.font = Math.round(10 * dpr) + "px 'IBM Plex Mono', monospace";
     xs.forEach((lx, li) => {
-      const x = Math.round(bx + lx * bw) + 0.5, v = S.mode === "lineas" ? VOICES[li] : null, col = v ? v.color : "#E2FF3B";
+      const x = Math.round(bx + lx * bw) + 0.5, v = S.mode === "lineas" ? VOICES[li] : null, col = v ? v.color : "#E56A5D";
       for (let s = 0; s < S.segs; s++) {   // tono azul en el tramo que suena (siempre visible)
         const k = li * MAXS + s, f = lFlash[k];
-        if (f > 0.02) { vctx.fillStyle = "rgba(59,59,255," + (S.tint * f * 1.4).toFixed(3) + ")"; vctx.fillRect(x - bw * 0.05, by + s * segH, bw * 0.1, segH); lFlash[k] *= Math.pow(0.12, dt); }
+        if (f > 0.02) { vctx.fillStyle = "rgba(62,120,178," + (S.tint * f * 1.4).toFixed(3) + ")"; vctx.fillRect(x - bw * 0.05, by + s * segH, bw * 0.1, segH); lFlash[k] *= Math.pow(0.12, dt); }
       }
       if (S.lines) {
         vctx.strokeStyle = rgba(col, 0.75); vctx.lineWidth = 1.5 * dpr;
@@ -469,7 +941,7 @@
         if (v) { vctx.fillStyle = col; vctx.fillText("L" + (li + 1) + " · " + v.name.toUpperCase(), x + 7 * dpr, by + 16 * dpr); }
         for (let s = 0; s < S.segs; s++) {
           const f = lFlash[li * MAXS + s]; if (v && f < 0.3) continue;
-          vctx.fillStyle = f > 0.3 ? "#E2FF3B" : "rgba(238,240,255,.62)";
+          vctx.fillStyle = f > 0.3 ? "#E56A5D" : "rgba(155,170,185,.62)";
           vctx.fillText(noteName(segMidi(S.segs - 1 - s) + (v ? v.oct : 0)).toUpperCase(), x + 7 * dpr, by + (s + 0.5) * segH + 4 * dpr);
         }
       }
@@ -482,16 +954,16 @@
       const h = hits[i]; h.life -= dt * 0.9;
       if (h.life <= 0) { hits.splice(i, 1); continue; }
       const cx = bx + h.x * bw, cy = by + (h.s + 0.5) * segH;
-      vctx.fillStyle = "rgba(59,59,255," + (S.tint * h.life * 1.4).toFixed(3) + ")"; vctx.fillRect(bx + (h.x - h.w / 2) * bw, by + h.s * segH, h.w * bw, segH);
-      vctx.fillStyle = rgba("#E2FF3B", Math.min(1, h.life * 1.2)); vctx.beginPath(); vctx.arc(cx, cy, (2 + 3 * h.life) * dpr, 0, Math.PI * 2); vctx.fill();
+      vctx.fillStyle = "rgba(62,120,178," + (S.tint * h.life * 1.4).toFixed(3) + ")"; vctx.fillRect(bx + (h.x - h.w / 2) * bw, by + h.s * segH, h.w * bw, segH);
+      vctx.fillStyle = rgba("#E56A5D", Math.min(1, h.life * 1.2)); vctx.beginPath(); vctx.arc(cx, cy, (2 + 3 * h.life) * dpr, 0, Math.PI * 2); vctx.fill();
       if (S.notes && h.life > 0.55) vctx.fillText(noteName(h.m).toUpperCase(), cx + 8 * dpr, cy + 4 * dpr);
     }
     if (S.lines) {
       vctx.strokeStyle = "rgba(238,240,255,.5)"; vctx.lineWidth = 1; vctx.beginPath();
       for (let st = 0; st <= S.steps; st++) { const tx = Math.round(bx + st / S.steps * bw) + 0.5; vctx.moveTo(tx, by); vctx.lineTo(tx, by + 4 * dpr); vctx.moveTo(tx, by + bh - 4 * dpr); vctx.lineTo(tx, by + bh); }
       vctx.stroke();
-      vctx.strokeStyle = "#E2FF3B"; vctx.lineWidth = 1.5 * dpr; vctx.beginPath(); vctx.moveTo(x, by); vctx.lineTo(x, by + bh); vctx.stroke();
-      vctx.strokeStyle = "rgba(226,255,59,.5)"; vctx.lineWidth = 1; vctx.beginPath();
+      vctx.strokeStyle = "#E56A5D"; vctx.lineWidth = 1.5 * dpr; vctx.beginPath(); vctx.moveTo(x, by); vctx.lineTo(x, by + bh); vctx.stroke();
+      vctx.strokeStyle = "rgba(229,106,93,.5)"; vctx.lineWidth = 1; vctx.beginPath();
       for (let s = 1; s < S.segs; s++) { const y = Math.round(by + s * segH) + 0.5; vctx.moveTo(x - 5 * dpr, y); vctx.lineTo(x + 5 * dpr, y); }
       vctx.stroke();
     }
@@ -539,12 +1011,12 @@
       }
     }
     // forma ideal de la onda elegida: en neón sin sonido, de fondo cuando hay señal real
-    sctx.strokeStyle = livePts ? "rgba(238,240,255,.32)" : "#E2FF3B"; sctx.lineWidth = (livePts ? 1 : 1.6) * dpr;
+    sctx.strokeStyle = livePts ? "rgba(155,170,185,.32)" : "#E56A5D"; sctx.lineWidth = (livePts ? 1 : 1.6) * dpr;
     sctx.beginPath();
     for (let x = 0; x <= split - pad; x++) { const y = mid - waveVal(S.wave, x / (split - pad) * cycles) * amp; x ? sctx.lineTo(x, y) : sctx.moveTo(x, y); }
     sctx.stroke();
     if (livePts) {
-      sctx.strokeStyle = "#E2FF3B"; sctx.lineWidth = 1.6 * dpr; sctx.beginPath();
+      sctx.strokeStyle = "#E56A5D"; sctx.lineWidth = 1.6 * dpr; sctx.beginPath();
       livePts.forEach(([x, y], k) => (k ? sctx.lineTo(x, y) : sctx.moveTo(x, y))); sctx.stroke();
     }
     // armónicos teóricos y curva del pasa-bajos (12 dB/oct); los armónicos sobre el corte se apagan
@@ -552,7 +1024,7 @@
     for (let n = 1; n <= N; n++) {
       const a = harmonic(S.wave, n); if (!a) continue;
       const h = Math.max(1, a * (H - pad * 2)), x = split + pad + (n - 1) * bw;
-      sctx.fillStyle = f0 * n > S.cut ? "rgba(123,128,179,.45)" : "#E2FF3B";
+      sctx.fillStyle = f0 * n > S.cut ? "rgba(98,114,136,.45)" : "#E56A5D";
       sctx.fillRect(Math.round(x + bw * 0.2), Math.round(H - pad - h), Math.max(1, Math.round(bw * 0.6)), Math.round(h));
     }
     sctx.strokeStyle = hlCut ? "#FFFFFF" : "rgba(238,240,255,.6)"; sctx.lineWidth = (hlCut ? 2 : 1) * dpr; sctx.setLineDash([3 * dpr, 3 * dpr]);
@@ -593,14 +1065,14 @@
     // cola de reverb (zona sombreada)
     if (S.rev > 0.01) {
       const hlR = hlOn("rev");
-      ectx.fillStyle = hlR ? "rgba(150,150,255,.45)" : "rgba(150,150,255,.2)";
+      ectx.fillStyle = hlR ? "rgba(62,120,178,.45)" : "rgba(62,120,178,.2)";
       ectx.beginPath(); ectx.moveTo(X(S.atk), base);
       for (let i = 0; i <= 80; i++) { const t = S.atk + (T - S.atk) * i / 80; ectx.lineTo(X(t), Y(Math.max(envAt(t), S.rev * S.vol * 0.55 * Math.exp(-(t - S.atk) / (0.35 + S.rev * 0.9))))); }
       ectx.lineTo(X(T), base); ectx.closePath(); ectx.fill();
     }
     // tramos: attack y release resaltables
     const seg = (t0, t1, hl) => {
-      ectx.strokeStyle = hl ? "#FFFFFF" : "#E2FF3B"; ectx.lineWidth = (hl ? 2.6 : 1.6) * dpr; ectx.beginPath();
+      ectx.strokeStyle = hl ? "#FFFFFF" : "#E56A5D"; ectx.lineWidth = (hl ? 2.6 : 1.6) * dpr; ectx.beginPath();
       for (let i = 0; i <= 60; i++) { const t = t0 + (t1 - t0) * i / 60; i ? ectx.lineTo(X(t), Y(envAt(t))) : ectx.moveTo(X(t), Y(envAt(t))); }
       ectx.stroke();
     };
@@ -621,7 +1093,7 @@
     ectx.strokeRect(Math.round(mx) + 0.5, Math.round(Y(S.vol)) + 0.5, Math.round(meterW) - 1, Math.round(base - Y(S.vol)) - 1);
     let lvl = 0;
     if (analyser && soundOn()) { analyser.getFloatTimeDomainData(mbuf); let sum = 0; for (let i = 0; i < mbuf.length; i++) sum += mbuf[i] * mbuf[i]; lvl = Math.min(1, Math.sqrt(sum / mbuf.length) * 4); }
-    if (lvl > 0.002) { ectx.fillStyle = "#E2FF3B"; ectx.fillRect(Math.round(mx) + 2, Math.round(Y(lvl)), Math.round(meterW) - 4, Math.round(base - Y(lvl))); }
+    if (lvl > 0.002) { ectx.fillStyle = "#E56A5D"; ectx.fillRect(Math.round(mx) + 2, Math.round(Y(lvl)), Math.round(meterW) - 4, Math.round(base - Y(lvl))); }
   }
   const rollC = $("roll"), rctx = rollC.getContext("2d");
   function drawRoll(now) {
@@ -634,9 +1106,82 @@
     for (let m = Math.ceil(lo / 12) * 12; m < hi; m += 12) { const y = Math.round(H - (m - lo) / (hi - lo) * H) + 0.5; rctx.beginPath(); rctx.moveTo(0, y); rctx.lineTo(W, y); rctx.stroke(); }
     for (const n of roll) {
       const age = (now - n.t) / span, x = W - age * W, y = H - (n.m - lo) / (hi - lo) * H;
-      rctx.fillStyle = age < 0.05 ? "#E2FF3B" : n.c ? rgba(n.c, 0.85) : "rgba(150,150,255,.85)";
+      rctx.fillStyle = age < 0.05 ? "#E56A5D" : n.c ? rgba(n.c, 0.85) : "rgba(62,120,178,.85)";
       rctx.fillRect(x - 2 * dpr, y - 1.5 * dpr, 9 * dpr, 3 * dpr);
     }
+  }
+
+  // Gráfico temporal de actividad visual real PULSO 90
+  const actCanvas = $("activityCanvas"), actCtx = actCanvas ? actCanvas.getContext("2d") : null;
+  function drawActivityGraph() {
+    if (!actCanvas || !actCtx) return;
+    const dpr = fit(actCanvas);
+    const W = actCanvas.width, H = actCanvas.height;
+    actCtx.clearRect(0, 0, W, H);
+
+    // Umbrales emocionales guía (TENSIÓN ~ 0.16, ESTALLIDO ~ 0.28)
+    const estY = H * (1 - 0.28 / 0.40);
+    const tenY = H * (1 - 0.16 / 0.40);
+
+    actCtx.strokeStyle = "rgba(229,106,93,0.30)";
+    actCtx.lineWidth = 1 * dpr;
+    actCtx.setLineDash([3 * dpr, 3 * dpr]);
+    actCtx.beginPath();
+    actCtx.moveTo(0, estY);
+    actCtx.lineTo(W, estY);
+    actCtx.stroke();
+
+    actCtx.strokeStyle = "rgba(62,120,178,0.30)";
+    actCtx.beginPath();
+    actCtx.moveTo(0, tenY);
+    actCtx.lineTo(W, tenY);
+    actCtx.stroke();
+    actCtx.setLineDash([]);
+
+    // Curva de actividad histórica real
+    const len = ACTIVITY_HISTORY_LEN;
+    actCtx.beginPath();
+    for (let i = 0; i < len; i++) {
+      const idx = (activityHead + i) % len;
+      const v = Math.min(0.40, activityHistory[idx]);
+      const x = (i / (len - 1)) * W;
+      const y = H - (v / 0.40) * (H - 4 * dpr) - 2 * dpr;
+      if (i === 0) actCtx.moveTo(x, y);
+      else actCtx.lineTo(x, y);
+    }
+
+    // Relleno degradado bajo la curva
+    actCtx.lineTo(W, H);
+    actCtx.lineTo(0, H);
+    actCtx.closePath();
+    const grad = actCtx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, "rgba(229, 106, 93, 0.35)");
+    grad.addColorStop(0.5, "rgba(62, 120, 178, 0.20)");
+    grad.addColorStop(1, "rgba(26, 35, 45, 0.0)");
+    actCtx.fillStyle = grad;
+    actCtx.fill();
+
+    // Trazo de la línea de actividad
+    actCtx.beginPath();
+    for (let i = 0; i < len; i++) {
+      const idx = (activityHead + i) % len;
+      const v = Math.min(0.40, activityHistory[idx]);
+      const x = (i / (len - 1)) * W;
+      const y = H - (v / 0.40) * (H - 4 * dpr) - 2 * dpr;
+      if (i === 0) actCtx.moveTo(x, y);
+      else actCtx.lineTo(x, y);
+    }
+    actCtx.strokeStyle = "#E56A5D";
+    actCtx.lineWidth = 1.6 * dpr;
+    actCtx.stroke();
+
+    // Punto del valor actual
+    const curV = Math.min(0.40, activityHistory[(activityHead - 1 + len) % len]);
+    const curY = H - (curV / 0.40) * (H - 4 * dpr) - 2 * dpr;
+    actCtx.fillStyle = "#E56A5D";
+    actCtx.beginPath();
+    actCtx.arc(W - 2 * dpr, curY, 3 * dpr, 0, Math.PI * 2);
+    actCtx.fill();
   }
 
   // ================= controles =================
@@ -681,7 +1226,7 @@
   }));
   function updMap() {
     const M = S.mode, p = [];
-    if (M === "zonas") p.push("zona → nota");
+    if (M === "zonas") p.push("actividad → muestra");
     if (M === "linea") p.push("altura del cruce → nota");
     if (M === "lineas") p.push("línea → voz", "altura del cruce → nota");
     if (M === "escaner") p.push("altura → nota");
@@ -693,7 +1238,7 @@
     $("mapText").textContent = p.join(" · "); $("stMap").textContent = p.length + (p.length === 1 ? " regla" : " reglas");
   }
   const MODE_INFO = {
-    zonas: { name: "zonas", lbl: " · zona ", hint: "La imagen se divide en una grilla: cada zona es una tecla que suena cuando algo se mueve dentro de ella." },
+    zonas: { name: "zonas", lbl: " · zona ", hint: "PULSO 90: La imagen se divide en una grilla que dispara el banco sonoro según el nivel de actividad y cambio." },
     linea: { name: "línea fija", lbl: " · ", hint: "Una línea vertical queda quieta y suena cuando algo del video la cruza. La altura del cruce da la nota, la intensidad el volumen y la posición el pan." },
     lineas: { name: "varias líneas", lbl: " · ", hint: "Varias líneas, cada una con su propia voz: forma de onda, envolvente, octava y filtro. Aquí no aplican la forma de onda, Attack, Release ni Pasa-bajos del panel Sonido, porque cada línea trae los suyos." },
     escaner: { name: "escáner", lbl: " · ", hint: "Una línea recorre la imagen de izquierda a derecha y la lee como una partitura: en cada paso suenan los tramos claros. La altura da la nota y el brillo el volumen. Funciona incluso con imágenes quietas." },
@@ -709,7 +1254,7 @@
     document.querySelectorAll("[data-mode]").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.mode === m)));
     document.querySelectorAll("#pMode [data-show]").forEach((el) => { el.hidden = !el.dataset.show.split(" ").includes(m); });
     $("modeHint").textContent = MODE_INFO[m].hint; $("stMode").textContent = MODE_INFO[m].name; $("lblZone").textContent = MODE_INFO[m].lbl;
-    $("chain").innerHTML = "luz → cámara → píxel → <b>" + (m === "escaner" ? "brillo" : "cambio") + "</b> → regla → nota → sonido";
+    $("chain").innerHTML = "luz → cámara → píxel → <b>" + (m === "escaner" ? "brillo" : "cambio") + "</b> → regla → " + (m === "zonas" ? "muestra" : "nota") + " → sonido";
     $("lblPct").textContent = m === "escaner" ? " · brillo " : " · cambio ";
     $("lastZone").textContent = "—"; updMap();
   }
@@ -789,7 +1334,7 @@
     acc += dt;
     if (acc >= 1 / 15) { acc = 0; analyse(now); }
     if (S.mode === "escaner") scanTick(now);
-    drawView(dt); drawScope(); drawEnv(); drawRoll(now);
+    drawView(dt); drawScope(); drawEnv(); drawRoll(now); drawActivityGraph();
     if (recording) { const s = Math.floor((now - recStart) / 1000), t = Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); $("recTime").textContent = t; $("recBadgeT").textContent = t; }
     requestAnimationFrame(loop);
   }

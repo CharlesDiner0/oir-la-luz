@@ -3,36 +3,60 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Oír la luz</title>
+<title>PULSO 90 · La emoción convertida en sonido</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div class="grain" aria-hidden="true"></div>
 
-<div class="bar bar-top">
-  <span>Clase 03 · Sonido · Ejercicio 03</span>
-  <span class="grow chain" id="chain">luz → cámara → píxel → <b>cambio</b> → regla → nota → sonido</span>
-  <button type="button" class="neon" id="soundBtn" aria-pressed="false">▶ Activar sonido</button>
-  <button type="button" id="fsBtn">⛶ Pantalla completa</button>
-</div>
+<header class="bar bar-top">
+  <div class="brand">
+    <span class="brand-title">PULSO 90</span>
+    <span class="brand-tag">La emoción convertida en sonido</span>
+  </div>
+  <div class="signal-badge" id="signalStatusBadge">
+    <span class="signal-dot">●</span>
+    <span class="signal-text" id="signalStatusText">SEÑAL EN ESPERA</span>
+  </div>
+  <span class="grow chain" id="chain">luz → cámara → píxel → <b>cambio</b> → regla → muestra → sonido</span>
+  <div class="group-inline">
+    <button type="button" class="coral" id="soundBtn" aria-pressed="false">▶ Activar sonido</button>
+    <button type="button" id="fsBtn" title="Pantalla completa">⛶ Pantalla completa</button>
+  </div>
+</header>
 
 <main class="stage" id="stage">
   <div class="screen">
-  <canvas id="view"></canvas>
-  <div class="title"><h1>oír la luz</h1><p id="status">Fuente: ejemplo · calle sintética</p></div>
-  <div class="readout" aria-live="polite">
-    <div class="note" id="lastNote">—</div>
-    <div><span class="lbl">frecuencia </span><span class="val" id="lastHz">—</span> <span class="lbl" id="lblZone"> · zona </span><span class="val" id="lastZone">—</span> <span class="lbl" id="lblPct"> · cambio </span><span class="val" id="lastPct">—</span></div>
-    <div class="rule" id="mapText">zona → nota</div>
-  </div>
-  <div class="toast" id="toast" hidden></div>
+    <canvas id="view"></canvas>
+    
+    <div class="title">
+      <h1>PULSO 90</h1>
+      <div class="subtitle">Monitoreo de intensidad emocional · T06 Sonidos de Diseño UDP</div>
+      <p id="status">Fuente: ejemplo · calle sintética</p>
+    </div>
+
+    <div class="readout" aria-live="polite">
+      <div class="note" id="lastNote">—</div>
+      <div>
+        <span class="lbl">nivel </span><span class="val" id="lastHz">—</span>
+        <span class="lbl" id="lblZone"> · zona </span><span class="val" id="lastZone">—</span>
+        <span class="lbl" id="lblPct"> · cambio </span><span class="val" id="lastPct">—</span>
+      </div>
+      <div class="rule" id="mapText">actividad → muestra · intensidad → volumen · posición x → pan</div>
+    </div>
+    
+    <div class="toast" id="toast" hidden></div>
   </div>
 
+  <!-- Dock de Parámetros y Herramientas -->
   <nav class="dock" id="dock" aria-label="Parámetros">
     <div>
-      <button type="button" class="trigger" aria-expanded="false" data-panel="pMode"><span><span class="num">01</span>Modo</span><span class="state" id="stMode">zonas</span></button>
+      <button type="button" class="trigger" aria-expanded="false" data-panel="pMode">
+        <span><span class="num">01</span>Modo</span>
+        <span class="state" id="stMode">zonas</span>
+      </button>
       <div class="panel" id="pMode" hidden>
         <div class="panel-bar"><span>01 · Modo de disparo</span><button type="button" data-close>Cerrar</button></div>
         <div class="seg seg4" role="group" aria-label="Modo">
@@ -41,7 +65,7 @@
           <button type="button" data-mode="lineas" aria-pressed="false">Líneas</button>
           <button type="button" data-mode="escaner" aria-pressed="false">Escáner</button>
         </div>
-        <p class="hint" id="modeHint">La imagen se divide en una grilla: cada zona es una tecla que suena cuando algo se mueve dentro de ella.</p>
+        <p class="hint" id="modeHint">PULSO 90: La imagen se divide en una grilla que dispara el banco sonoro según el nivel de actividad y cambio.</p>
         <div class="row" data-show="linea"><label for="lx">Posición</label><input type="range" id="lx" min="5" max="95" step="1" value="50"><output id="lxOut">50 %</output></div>
         <div class="row" data-show="lineas"><label for="nl">Líneas</label><input type="range" id="nl" min="2" max="4" step="1" value="3"><output id="nlOut">3</output></div>
         <div class="row" data-show="linea lineas escaner"><label for="segs">Tramos</label><input type="range" id="segs" min="3" max="12" step="1" value="7"><output id="segsOut">7</output></div>
@@ -57,87 +81,208 @@
         <ol class="voices" id="voices" data-show="lineas"></ol>
       </div>
     </div>
+
     <div>
-      <button type="button" class="trigger" aria-expanded="false" data-panel="pVis"><span><span class="num">02</span>Visualización</span><span class="state" id="stVis">sutil</span></button>
-      <div class="panel" id="pVis" hidden>
-        <div class="panel-bar"><span>02 · Visualización</span><button type="button" data-close>Cerrar</button></div>
-        <div class="seg" role="group" aria-label="Fondo">
-          <button type="button" data-view="mix" aria-pressed="true">Video</button>
-          <button type="button" data-view="mask" aria-pressed="false">Máquina</button>
+      <button type="button" class="trigger" aria-expanded="false" data-panel="pBank">
+        <span><span class="num">02</span>Banco</span>
+        <span class="state" id="stBank">no cargado</span>
+      </button>
+      <div class="panel" id="pBank" hidden>
+        <div class="panel-bar"><span>02 · Banco sonoro (8 WAV)</span><button type="button" data-close>Cerrar</button></div>
+        <p class="hint">Banco sonoro de 8 muestras para la jugada. Pulsa cada botón para probar individualmente o mira cómo se iluminan al dispararse en vivo.</p>
+
+        <!-- Fase 1: Anticipación / Contención -->
+        <div class="bank-group">
+          <div class="bank-group-title">Fase 1 · Anticipación / Contención (Actividad baja)</div>
+          <div class="bank-grid">
+            <button type="button" class="bank-test-btn" data-sound="01_latido_base">
+              <span class="btn-num">01</span>
+              <span class="btn-name">Latido base</span>
+              <span class="btn-meta">1.2s · pulso base</span>
+            </button>
+            <button type="button" class="bank-test-btn" data-sound="03_respiracion">
+              <span class="btn-num">03</span>
+              <span class="btn-name">Respiración</span>
+              <span class="btn-meta">3.5s · toma de aire</span>
+            </button>
+            <button type="button" class="bank-test-btn" data-sound="04_friccion">
+              <span class="btn-num">04</span>
+              <span class="btn-name">Fricción</span>
+              <span class="btn-meta">1.8s · roce/contacto</span>
+            </button>
+          </div>
         </div>
-        <p class="hint">Máquina reemplaza el video por los píxeles que cambiaron: es todo lo que el sistema ve.</p>
-        <div class="row"><label for="tint">Tono azul</label><input type="range" id="tint" min="0" max="60" step="1" value="22"><output id="tintOut">22 %</output></div>
-        <div class="row"><label for="veil">Oscurecer</label><input type="range" id="veil" min="0" max="70" step="1" value="0"><output id="veilOut">0 %</output></div>
-        <p class="hint">Líneas, notas y partículas se apagan desde la barra inferior.</p>
+
+        <!-- Fase 2: Aceleración / Disputa -->
+        <div class="bank-group">
+          <div class="bank-group-title">Fase 2 · Aceleración / Disputa (Actividad media)</div>
+          <div class="bank-grid">
+            <button type="button" class="bank-test-btn" data-sound="02_latido_rapido">
+              <span class="btn-num">02</span>
+              <span class="btn-name">Latido rápido</span>
+              <span class="btn-meta">1.0s · ritmo acelerado</span>
+            </button>
+            <button type="button" class="bank-test-btn" data-sound="05_murmullo">
+              <span class="btn-num">05</span>
+              <span class="btn-name">Murmullo</span>
+              <span class="btn-meta">4.0s · masa/tribuna</span>
+            </button>
+            <button type="button" class="bank-test-btn" data-sound="06_desplazamiento">
+              <span class="btn-num">06</span>
+              <span class="btn-name">Desplazamiento</span>
+              <span class="btn-meta">2.0s · velocidad/carrera</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Fase 3: Clímax / Desborde -->
+        <div class="bank-group">
+          <div class="bank-group-title">Fase 3 · Clímax / Desborde (Alta y Pico)</div>
+          <div class="bank-grid">
+            <button type="button" class="bank-test-btn" data-sound="07_tension">
+              <span class="btn-num">07</span>
+              <span class="btn-name">Tensión</span>
+              <span class="btn-meta">4.5s · peligro inminente</span>
+            </button>
+            <button type="button" class="bank-test-btn" data-sound="08_estallido">
+              <span class="btn-num">08</span>
+              <span class="btn-name">Estallido</span>
+              <span class="btn-meta">5.0s · pico excepcional</span>
+            </button>
+          </div>
+        </div>
+
+        <p class="hint" id="bankStatus">Pulsa "Activar sonido" o cualquier botón para inicializar.</p>
+        <div id="bankError" class="hint" style="color:var(--coral)" hidden></div>
       </div>
     </div>
+
     <div>
-      <button type="button" class="trigger" aria-expanded="false" data-panel="pKeys"><span><span class="num">03</span>Teclas</span><span class="state" id="stKeys">5 × 3</span></button>
-      <div class="panel" id="pKeys" hidden>
-        <div class="panel-bar"><span>03 · Teclas</span><button type="button" data-close>Cerrar</button></div>
-        <div class="row"><label for="cols">Columnas</label><input type="range" id="cols" min="3" max="12" step="1" value="5"><output id="colsOut">5</output></div>
-        <div class="row"><label for="rows">Filas</label><input type="range" id="rows" min="1" max="3" step="1" value="3"><output id="rowsOut">3</output></div>
-        <div class="row two"><label for="scale">Escala</label>
-          <select id="scale"><option value="pmaj">Pentatónica mayor</option><option value="pmin">Pentatónica menor</option><option value="maj">Mayor</option><option value="chr">Cromática</option></select></div>
-        <div class="row two"><label for="root">Nota base</label>
-          <select id="root"><option value="48" selected>Do3 · 131 Hz</option><option value="55">Sol3 · 196 Hz</option><option value="57">La3 · 220 Hz</option><option value="60">Do4 · 262 Hz</option></select></div>
-        <p class="hint">Columnas recorren la escala; filas son octavas, la de arriba es la más aguda. Columnas y filas solo aplican al modo Zonas; escala y nota base aplican a todos.</p>
-      </div>
-    </div>
-    <div>
-      <button type="button" class="trigger" aria-expanded="false" data-panel="pDet"><span><span class="num">04</span>Detección</span><span class="state" id="stDet">3 %</span></button>
+      <button type="button" class="trigger" aria-expanded="false" data-panel="pDet">
+        <span><span class="num">03</span>Detección</span>
+        <span class="state" id="stDet">3 %</span>
+      </button>
       <div class="panel" id="pDet" hidden>
-        <div class="panel-bar"><span>04 · Detección</span><button type="button" data-close>Cerrar</button></div>
-        <div class="row"><label for="thr">Umbral píxel</label><input type="range" id="thr" min="8" max="80" step="1" value="28"><output id="thrOut">28</output></div>
-        <div class="row"><label for="sens">Sensibilidad</label><input type="range" id="sens" min="1" max="40" step="1" value="3"><output id="sensOut">3 %</output></div>
-        <div class="row"><label for="cool">Repetición</label><input type="range" id="cool" min="60" max="1200" step="20" value="320"><output id="coolOut">320 ms</output></div>
-        <p class="hint">Compara cada fotograma con el anterior (15 por segundo, 128 × 72 px). Una zona o un tramo de línea suena cuando el porcentaje de píxeles que cambian supera la sensibilidad. El escáner no usa estos valores: lee el brillo.</p>
+        <div class="panel-bar"><span>03 · Detección de movimiento</span><button type="button" data-close>Cerrar</button></div>
+        <p class="hint">Regula cómo el sistema cuantifica la diferencia entre fotogramas consecutivos de la jugada.</p>
+        <div class="row">
+          <label for="sens" title="Sensibilidad mínima para que una celda active sonido">Sensibilidad</label>
+          <input type="range" id="sens" min="1" max="40" step="1" value="3">
+          <output id="sensOut">3 %</output>
+        </div>
+        <div class="row">
+          <label for="cool" title="Tiempo de enfriamiento de cada celda individual">Repetición</label>
+          <input type="range" id="cool" min="60" max="1200" step="20" value="320">
+          <output id="coolOut">320 ms</output>
+        </div>
+        <div class="row">
+          <label for="thr" title="Diferencia de brillo por píxel para considerarlo cambiado">Umbral píxel</label>
+          <input type="range" id="thr" min="8" max="80" step="1" value="28">
+          <output id="thrOut">28</output>
+        </div>
+        <p class="hint">Compara cada fotograma con el anterior (15 por segundo, 128 × 72 px). Un cambio fuerte en una celda eleva el nivel a media o alta actividad.</p>
       </div>
     </div>
+
     <div>
-      <button type="button" class="trigger" aria-expanded="false" data-panel="pSnd"><span><span class="num">05</span>Sonido</span><span class="state" id="stSnd">triang.</span></button>
+      <button type="button" class="trigger" aria-expanded="false" data-panel="pSnd">
+        <span><span class="num">04</span>Acústica</span>
+        <span class="state" id="stSnd">vol 60%</span>
+      </button>
       <div class="panel" id="pSnd" hidden>
-        <div class="panel-bar"><span>05 · Sonido</span><button type="button" data-close>Cerrar</button></div>
+        <div class="panel-bar"><span>04 · Acústica y mezcla</span><button type="button" data-close>Cerrar</button></div>
+        <p class="hint">Procesamiento de salida que afecta a las muestras y sintetizadores a través de Web Audio API.</p>
+        <div class="row">
+          <label for="vol" title="Volumen maestro de salida">Volumen</label>
+          <input type="range" id="vol" min="0" max="100" step="1" value="60">
+          <output id="volOut">60 %</output>
+        </div>
+        <div class="row">
+          <label for="cut" title="Filtro pasa-bajos para atenuar agudos y dar profundidad">Pasa-bajos</label>
+          <input type="range" id="cut" min="200" max="12000" step="10" value="3200">
+          <output id="cutOut">3.2k</output>
+        </div>
+        <div class="row">
+          <label for="rev" title="Reverberación espacial convolutiva">Reverb</label>
+          <input type="range" id="rev" min="0" max="100" step="1" value="30">
+          <output id="revOut">30 %</output>
+        </div>
+        <div class="row">
+          <label for="atk" title="Tiempo de ataque en síntesis">Attack</label>
+          <input type="range" id="atk" min="1" max="800" step="1" value="8">
+          <output id="atkOut">8 ms</output>
+        </div>
+        <div class="row">
+          <label for="rel" title="Tiempo de caída en síntesis">Release</label>
+          <input type="range" id="rel" min="40" max="3000" step="10" value="700">
+          <output id="relOut">700 ms</output>
+        </div>
+        <p class="hint" style="margin-top:6px">Forma de onda (aplica a modos de síntesis Línea y Escáner):</p>
         <div class="seg" role="group" aria-label="Forma de onda">
           <button type="button" data-wave="sine" aria-pressed="false">Seno</button>
           <button type="button" data-wave="triangle" aria-pressed="true">Triang.</button>
           <button type="button" data-wave="square" aria-pressed="false">Cuadr.</button>
           <button type="button" data-wave="sawtooth" aria-pressed="false">Sierra</button>
         </div>
-        <div class="row"><label for="atk">Attack</label><input type="range" id="atk" min="1" max="800" step="1" value="8"><output id="atkOut">8 ms</output></div>
-        <div class="row"><label for="rel">Release</label><input type="range" id="rel" min="40" max="3000" step="10" value="700"><output id="relOut">700 ms</output></div>
-        <div class="row"><label for="cut">Pasa-bajos</label><input type="range" id="cut" min="200" max="12000" step="10" value="3200"><output id="cutOut">3.2k</output></div>
-        <div class="row"><label for="rev">Reverb</label><input type="range" id="rev" min="0" max="100" step="1" value="30"><output id="revOut">30 %</output></div>
-        <div class="row"><label for="vol">Volumen</label><input type="range" id="vol" min="0" max="100" step="1" value="60"><output id="volOut">60 %</output></div>
       </div>
     </div>
+
     <div>
-      <button type="button" class="trigger" aria-expanded="false" data-panel="pMap"><span><span class="num">06</span>Mapping</span><span class="state" id="stMap">3 reglas</span></button>
+      <button type="button" class="trigger" aria-expanded="false" data-panel="pVis">
+        <span><span class="num">05</span>Visual</span>
+        <span class="state" id="stVis">sutil</span>
+      </button>
+      <div class="panel" id="pVis" hidden>
+        <div class="panel-bar"><span>05 · Visualización del video</span><button type="button" data-close>Cerrar</button></div>
+        <div class="seg" role="group" aria-label="Fondo">
+          <button type="button" data-view="mix" aria-pressed="true">Video</button>
+          <button type="button" data-view="mask" aria-pressed="false">Máquina</button>
+        </div>
+        <p class="hint">"Máquina" reemplaza la imagen por la máscara de píxeles en cambio que el algoritmo analiza.</p>
+        <div class="row"><label for="tint">Tono azul</label><input type="range" id="tint" min="0" max="60" step="1" value="22"><output id="tintOut">22 %</output></div>
+        <div class="row"><label for="veil">Oscurecer</label><input type="range" id="veil" min="0" max="70" step="1" value="0"><output id="veilOut">0 %</output></div>
+      </div>
+    </div>
+
+    <div>
+      <button type="button" class="trigger" aria-expanded="false" data-panel="pMap">
+        <span><span class="num">06</span>Mapping</span>
+        <span class="state" id="stMap">3 reglas</span>
+      </button>
       <div class="panel" id="pMap" hidden>
-        <div class="panel-bar"><span>06 · Mapping</span><button type="button" data-close>Cerrar</button></div>
+        <div class="panel-bar"><span>06 · Reglas de Mapping</span><button type="button" data-close>Cerrar</button></div>
         <div class="checks">
-          <label><input type="checkbox" checked disabled> <span id="mapMain">zona → nota</span></label>
+          <label><input type="checkbox" checked disabled> <span id="mapMain">actividad → muestra</span></label>
           <label><input type="checkbox" id="mapVel" checked> intensidad del movimiento → volumen</label>
           <label><input type="checkbox" id="mapPan" checked> posición horizontal → pan</label>
           <label><input type="checkbox" id="mirror" checked> espejo (cámara)</label>
         </div>
+        <p class="hint">En modo Zonas, la posición en el eje horizontal ubica los sonidos en el espacio estéreo izquierdo-derecho.</p>
       </div>
     </div>
+
     <div>
-      <button type="button" class="trigger" aria-expanded="false" data-panel="pRec"><span><span class="num">07</span>Grabar</span><span class="state" id="stRec">—</span></button>
+      <button type="button" class="trigger" aria-expanded="false" data-panel="pRec">
+        <span><span class="num">07</span>Grabar</span>
+        <span class="state" id="stRec">—</span>
+      </button>
       <div class="panel" id="pRec" hidden>
-        <div class="panel-bar"><span>07 · Grabar y descargar</span><button type="button" data-close>Cerrar</button></div>
+        <div class="panel-bar"><span>07 · Grabar y exportar audio</span><button type="button" data-close>Cerrar</button></div>
         <div class="btnrow">
-          <button type="button" class="rec" id="recBtn" aria-pressed="false">● Grabar</button>
+          <button type="button" class="rec" id="recBtn" aria-pressed="false">● Grabar sesión</button>
           <span class="mono" id="recTime">0:00</span>
-          <button type="button" id="recDl" disabled>Descargar grabación</button>
+          <button type="button" id="recDl" disabled>Descargar audio</button>
         </div>
-        <div class="btnrow"><button type="button" id="noteDl" disabled>Descargar última nota</button></div>
-        <p class="hint" id="recHint">Graba lo que suena. Activa el sonido primero.</p>
+        <div class="btnrow"><button type="button" id="noteDl" disabled>Descargar último sonido</button></div>
+        <p class="hint" id="recHint">Captura la salida final del instrumento para análisis posterior.</p>
       </div>
     </div>
+
     <div>
-      <button type="button" class="trigger" aria-expanded="false" data-panel="pMidi"><span><span class="num">08</span>MIDI</span><span class="state" id="stMidi">sin conectar</span></button>
+      <button type="button" class="trigger" aria-expanded="false" data-panel="pMidi">
+        <span><span class="num">08</span>MIDI</span>
+        <span class="state" id="stMidi">sin conectar</span>
+      </button>
       <div class="panel" id="pMidi" hidden>
         <div class="panel-bar"><span>08 · Controlador MIDI</span><button type="button" data-close>Cerrar</button></div>
         <div class="btnrow">
@@ -145,29 +290,91 @@
           <button type="button" id="learnBtn" aria-pressed="false" disabled>Asignar</button>
           <button type="button" id="midiClear" disabled>Borrar</button>
         </div>
-        <p class="hint" id="midiHint">Conecta un controlador, presiona Asignar, abre un panel, toca un slider y mueve una perilla.</p>
+        <p class="hint" id="midiHint">Conecta un controlador por USB, presiona Asignar y mueve una perilla para vincularla a un control.</p>
+      </div>
+    </div>
+
+    <div>
+      <button type="button" class="trigger" aria-expanded="false" data-panel="pKeys">
+        <span><span class="num">09</span>Grilla</span>
+        <span class="state" id="stKeys">5 × 3</span>
+      </button>
+      <div class="panel" id="pKeys" hidden>
+        <div class="panel-bar"><span>09 · División de Grilla</span><button type="button" data-close>Cerrar</button></div>
+        <div class="row"><label for="cols">Columnas</label><input type="range" id="cols" min="3" max="12" step="1" value="5"><output id="colsOut">5</output></div>
+        <div class="row"><label for="rows">Filas</label><input type="range" id="rows" min="1" max="3" step="1" value="3"><output id="rowsOut">3</output></div>
+        <div class="row two"><label for="scale">Escala (sint.)</label>
+          <select id="scale"><option value="pmaj">Pentatónica mayor</option><option value="pmin">Pentatónica menor</option><option value="maj">Mayor</option><option value="chr">Cromática</option></select></div>
+        <div class="row two"><label for="root">Nota base</label>
+          <select id="root"><option value="48" selected>Do3 · 131 Hz</option><option value="55">Sol3 · 196 Hz</option><option value="57">La3 · 220 Hz</option><option value="60">Do4 · 262 Hz</option></select></div>
+        <p class="hint">Ajusta la resolución espacial de las zonas de detección sobre la pantalla.</p>
       </div>
     </div>
   </nav>
 
-  <section class="signal" id="signal" aria-label="Señal">
-    <div class="signal-bar"><span>09 · Señal</span><button type="button" id="sigHide" style="border:0;padding:0 2px;color:var(--gray-2)">Ocultar</button></div>
+  <!-- Monitor de Actividad y Telemetría Emocional -->
+  <section class="signal" id="signal" aria-label="Monitor de actividad y señal">
+    <div class="signal-bar">
+      <span>Monitor de Actividad</span>
+      <button type="button" id="sigHide">Ocultar</button>
+    </div>
     <div class="signal-body">
-      <div class="cap"><span id="scopeCap">forma de onda · triangular</span><span id="specCap">armónicos</span></div>
-      <canvas id="scope" style="height:76px"></canvas>
-      <div class="cap"><span id="envCapL">envolvente</span><span id="envCapR">reverb · vol</span></div>
-      <canvas id="env" style="height:64px"></canvas>
-      <div class="cap"><span>partitura · últimos 10 s</span><span>altura × tiempo</span></div>
-      <canvas id="roll"></canvas>
+      <!-- Estados emocionales discretos y porcentaje numérico -->
+      <div class="telemetry-header">
+        <div class="state-badge-container">
+          <span class="state-pill active-contencion" id="pillContencion">CONTENCIÓN</span>
+          <span class="state-pill" id="pillTension">TENSIÓN</span>
+          <span class="state-pill" id="pillEstallido">ESTALLIDO</span>
+        </div>
+        <div class="activity-num">
+          <span class="lbl">Intensidad</span>
+          <span class="val mono" id="globalActivityVal">0.0 %</span>
+        </div>
+      </div>
+
+      <!-- Barra de intensidad con marcas de umbral -->
+      <div class="intensity-bar-wrap">
+        <div class="intensity-bar-fill" id="intensityFill" style="width: 0%"></div>
+        <div class="intensity-marker marker-tension" title="Umbral Tensión"></div>
+        <div class="intensity-marker marker-estallido" title="Umbral Estallido"></div>
+      </div>
+
+      <!-- Gráfico temporal de actividad visual real -->
+      <div class="cap">
+        <span>Historial de actividad (12s)</span>
+        <span class="mono">visión por mov.</span>
+      </div>
+      <canvas id="activityCanvas" style="height: 60px"></canvas>
+
+      <!-- Oscilograma y armónicos -->
+      <div class="cap">
+        <span id="scopeCap">Forma de onda</span>
+        <span id="specCap">Armónicos</span>
+      </div>
+      <canvas id="scope" style="height: 48px"></canvas>
+
+      <!-- Envolvente: requerida por el motor visual existente -->
+      <div class="cap">
+        <span id="envCapL">Envolvente</span>
+        <span id="envCapR">Reverb · Vol</span>
+      </div>
+      <canvas id="env" style="height: 48px"></canvas>
+
+      <!-- Partitura temporal -->
+      <div class="cap">
+        <span>Partitura temporal</span>
+        <span>Últimos 10s</span>
+      </div>
+      <canvas id="roll" style="height: 42px"></canvas>
     </div>
   </section>
 </main>
 
-<div class="bar bar-bottom">
-  <div class="group-inline seg" role="group" aria-label="Fuente">
+<footer class="bar bar-bottom">
+  <div class="group-inline seg" role="group" aria-label="Fuente de video">
     <button type="button" id="srcDemo" aria-pressed="true">Ejemplo</button>
     <button type="button" id="srcCam" aria-pressed="false">Cámara</button>
-    <button type="button" id="srcFile" aria-pressed="false">Video</button>
+    <button type="button" id="srcFile" aria-pressed="false">Cargar video...</button>
   </div>
   <div class="group-inline" id="camCtx" hidden><button type="button" id="camOff">Apagar cámara</button></div>
   <div class="group-inline" id="vidCtx" hidden>
@@ -175,15 +382,20 @@
     <button type="button" id="vLoop" aria-pressed="true">⟲ Loop</button><button type="button" id="vChange">Cambiar</button>
   </div>
   <input type="file" id="fileInput" accept="video/*" hidden>
+  
+  <span class="helper-pill">1. Activa sonido ▶  ·  2. Carga un video de jugada o usa el ejemplo</span>
+  
   <span class="grow"></span>
   <span class="mono" id="recBadge" hidden><span class="rec-dot">●</span> REC <span id="recBadgeT">0:00</span></span>
-  <div class="group-inline" role="group" aria-label="Capas">
-    <button type="button" class="toggle" id="tLines" aria-pressed="true">Líneas</button>
-    <button type="button" class="toggle" id="tNotes" aria-pressed="true">Notas</button>
+  
+  <div class="group-inline" role="group" aria-label="Capas visibles">
+    <button type="button" class="toggle" id="tLines" aria-pressed="true">Grilla</button>
+    <button type="button" class="toggle" id="tNotes" aria-pressed="true">Datos</button>
     <button type="button" class="toggle" id="tParts" aria-pressed="true">Partículas</button>
-    <button type="button" class="toggle" id="tSignal" aria-pressed="true">Señal</button>
+    <button type="button" class="toggle" id="tSignal" aria-pressed="true">Monitor</button>
   </div>
-</div>
+</footer>
+
 <script src="script.js"></script>
 </body>
 </html>
