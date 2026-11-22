@@ -94,4 +94,4 @@ PULSO 90 se desarrolló a partir de **[Oír la luz](https://github.com/fefeliper
 Los ocho sonidos proceden de Freesound y sus fuentes individuales figuran en la tabla anterior. El material deportivo utilizado por cada persona se carga localmente; **el repositorio no incluye videos de transmisiones televisivas de terceros**.
 
 ---
-**Estado:** plataforma funcional probada en `localhost`; enlaces públicos, capturas de la versión publicada y video de demostración pendientes.
+**Estado:** PULSO 90, plataforma interactiva publicada y funcional en GitHub Pages.
