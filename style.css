@@ -692,3 +692,31 @@ select option { background: var(--bg-dark); color: var(--text-main); }
   overflow-y: auto;
   scrollbar-width: thin;
 }
+
+/* PULSO 90 — Corrección de paneles del dock */
+
+.dock .panel {
+  position: fixed;
+  top: calc(var(--bar-h) + 14px);
+  right: calc(var(--dock-w) + var(--edge) + 8px);
+  left: auto;
+
+  width: 380px;
+  max-width: calc(100vw - var(--dock-w) - 40px);
+  max-height: calc(100vh - var(--bar-h) * 2 - 30px);
+
+  overflow-y: auto;
+  z-index: 100;
+}
+
+@media (max-width: 900px) {
+  .dock .panel {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+    max-height: calc(100vh - 24px);
+  }
+}
